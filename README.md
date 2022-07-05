@@ -1,2 +1,2 @@
 # visual_scene
-R markdown analysis scripts for autism visual scene discrimination experiments
+R markdown analysis scripts for autism perceptual decision making experiments
