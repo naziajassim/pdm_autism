@@ -1,0 +1,192 @@
+---
+title: "cbs-bayes"
+author: "Nazia Jassim"
+date: "31/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+getwd();
+library(tidyverse);
+library(car);
+library(stats);
+library(BayesFactor) # for bayesian anova
+
+library(lsr)
+# color scheme https://colorbrewer2.org/?type=diverging&scheme=PuOr&n=3
+# ['#f1a340','#f7f7f7','#998ec3']
+
+```
+
+# # #  FEATURE MATCH
+```{r}
+read.csv("fm_accuracy.csv") %>%  mutate(condition= as_factor(condition), cohort=as_factor(cohort), sex = as_factor(sex), age=as.factor(Age), Subject_ID = as.factor(Subject_ID))  -> feature_match_accuracy ;
+
+#BayesF requires all variables to be of class factor
+
+feature_match_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Feature.Match_Attempted), SD = sd(Feature.Match_Attempted)) -> fm_nattempted #n trials attempted
+
+t.test(Feature.Match_Attempted ~ cohort, data =feature_match_accuracy) # frequentist
+ttestBF(formula= Feature.Match_Attempted ~ cohort, data =feature_match_accuracy) # BF
+cohensD(Feature.Match_Attempted~ cohort, data =feature_match_accuracy) # effect size
+
+#match condition
+feature_match_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Feature.Match_Match.Attempted), SD = sd(Feature.Match_Match.Attempted)) -> fm_nattempted_match
+
+t.test(Feature.Match_Match.Attempted ~ cohort, data =feature_match_accuracy)
+
+#mismatch condition
+feature_match_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Feature.Match_Mismatch.Attempted), SD = sd(Feature.Match_Mismatch.Attempted)) -> fm_nattempted_mismatch
+
+t.test(Feature.Match_Mismatch.Attempted ~ cohort, data =feature_match_accuracy)
+
+
+
+```
+
+# fm plot
+```{r}
+
+#1 
+ggplot(feature_match_accuracy, aes(x = condition, y = accuracy_rate_per_condition)) +
+    facet_wrap(~cohort) + # facet by group
+    geom_line(aes(group = Subject_ID ), col = "darkgrey", size = 0.40, alpha=0.4) + # plot individual data
+    stat_summary(fun.data = "mean_cl_normal", size = 0.40, color= "orange") + # add mean and between-subjects
+    # 95% CIs; note these are not accurate for a within-subjects comparison
+    labs(title= "C", x = "Condition", y = "Accuracy Rate") + theme_minimal() +facet_grid(. ~ cohort, scales = "free", space='free') +
+    scale_x_discrete(expand = c(0.4, 0)) 
+
+ggplot(feature_match_accuracy, aes(x = accuracy_rate_per_condition)) +
+    facet_wrap(~cohort, condition) + # facet by group
+    geom_hist()+
+    theme_classic() # change theme
+```
+
+# fm - bayes anova
+```{r}
+
+summary(aov(accuracy_rate_per_condition~ cohort*condition + Error(Subject_ID/(cohort*condition)), data=feature_match_accuracy)) # subject id is random factor
+
+bf_fm1 = anovaBF(accuracy_rate_per_condition~ cohort*condition +Subject_ID, data= feature_match_accuracy, whichRandom="Subject_ID"); # acc rate vs factors cohort and condition, subject as random factor
+
+plot(bf_fm1);
+
+bf_fm_interaction = bf_fm1[4]/bf_fm1[3] # interaction : comparing H1 (ie interaction) compared against null(ie main effects)
+
+# #without ID and with ID comparison
+# bfWithoutID = lmBF(accuracy_rate_per_condition~ cohort*condition, data =feature_match_accuracy)
+# bfWithoutID
+# bfOnlyID = lmBF(accuracy_rate_per_condition ~ Subject_ID, whichRandom="Subject_ID",data =feature_match_accuracy);
+# bf2 = bfWithoutID / bfOnlyID;
+# 
+# 
+# # with age 
+# bf_fm2= anovaBF( accuracy_rate_per_condition~ cohort*condition+age, data= feature_match_accuracy);
+# max(bf_fm2)/bf_fm2 # comparing to next best model
+# 
+# # with age, Subject as random factor
+# bf_fm2= anovaBF( accuracy_rate_per_condition~ cohort*condition + age + Subject_ID, data= feature_match_accuracy, whichRandom="Subject_ID");
+# max(bf_fm2)/bf_fm2 #comparing to next best model
+# 
+# 
+# bfall = c(bf,bf2);
+# bf[4] / bf2
+# bf2
+
+
+
+#  with sex, Subject as random factor
+bf_fm3= anovaBF( accuracy_rate_per_condition~ cohort*condition + sex + Subject_ID, data= feature_match_accuracy, whichRandom="Subject_ID");
+max(bf_fm3)/bf_fm3 #comparing to next best model
+
+```
+
+
+# -----------------------------------------------------------------------------------------------------------------------
+# POLYGONS
+
+```{r}
+#polygons_accuracy <- read.csv("polygons_accuracy_rate.csv")
+read.csv("poly_accuracy.csv") %>%  
+    mutate(condition= as_factor(condition), cohort=as_factor(cohort), sex = as_factor(sex), age=as.factor(Age), Subject_ID = as.factor(Subject_ID))-> polygons_accuracy 
+
+
+# N trials attempted for each group
+polygons_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Polygons_Attempted), SD = sd(Polygons_Attempted)) -> poly_nattempted
+
+t.test(Polygons_Attempted ~ cohort, data =polygons_accuracy)
+
+ttestBF(formula= Polygons_Attempted ~ cohort, data =polygons_accuracy) # BF
+
+cohensD(Polygons_Attempted ~ cohort, data =polygons_accuracy) # effect size
+
+#match 
+polygons_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Polygons_Match.Attempted), SD = sd(Polygons_Match.Attempted)) -> poly_nattempted_match
+
+t.test(Polygons_Match.Attempted ~ cohort, data =polygons_accuracy)
+
+#mismatch
+polygons_accuracy %>% group_by(cohort) %>% summarise(Mean = mean(Polygons_Mismatch.Attempted), SD = sd(Polygons_Mismatch.Attempted)) -> poly_nattempted_mismatch
+
+t.test(Polygons_Mismatch.Attempted ~ cohort, data =polygons_accuracy)
+
+```
+
+#plots
+```{r}
+ggplot(polygons_accuracy, aes(x = condition, y = accuracy_rate_per_condition)) +
+    facet_wrap(~cohort) + # facet by condition
+    geom_line(aes(group = Subject_ID ), col = '#f1a340', size = 0.25, alpha= 0.4) + # plot individual data
+    stat_summary(fun.data = "mean_cl_normal", size = 0.40, color= '#998ec3') + # add mean and between-subjects
+    # 95% CIs; note these are not accurate for a within-subjects comparison
+    labs(x = "Condition", y = "Accuracy Rate", title= "C") + # label axes
+    theme_minimal()  +facet_grid(. ~ cohort, scales = "free", space='free') +
+    scale_x_discrete(expand = c(0.4, 0)) 
+```
+# polygons bayes anova
+```{r}
+summary(aov(accuracy_rate_per_condition~ cohort*condition + Error(Subject_ID/(cohort*condition)), data= polygons_accuracy))
+# subject id is random factor
+
+bf_poly1 = anovaBF( accuracy_rate_per_condition~ cohort*condition +Subject_ID, data= polygons_accuracy, whichRandom="Subject_ID");
+plot(bf_poly1);
+
+# interaction effects
+bf_poly1_interaction= bf_poly1[4]/bf_poly1[3] # testing for interaction effect of groupx condition
+
+
+```
+
+
+# # #  ROTATIONS
+
+```{r}
+rotations_accuracy <- read.csv("rotations_accuracy_rate.csv")
+rotations_accuracy <- mutate(rotations_accuracy, condition= as_factor(condition), cohort=as_factor(cohort), sex = as_factor(sex),age=as.factor(Age), Subject_ID = as.factor(Subject_ID))
+```
+
+#plots
+```{r}
+ggplot(rotations_accuracy, aes(x = condition, y = accuracy_rate_per_condition)) +
+    facet_wrap(~cohort) + # facet by condition
+    geom_line(aes(group = Subject_ID ), col = "grey70", size = 0.25, alpha= 0.4) + # plot individual data
+    stat_summary(fun.data = "mean_cl_normal", size = 0.25, color= "darkred") + # add mean and between-subjects
+    # 95% CIs; note these are not accurate for a within-subjects comparison
+    labs(x = "Task Condition", y = "Accuracy Rate") + # label axes
+    theme_minimal() # change theme
+```
+
+```{r}
+summary(aov(accuracy_rate_per_condition~ cohort*condition + Error(Subject_ID/(cohort*condition)), data= rotations_accuracy))
+# subject id is random factor
+
+bf_rot1 = anovaBF( accuracy_rate_per_condition~ cohort*condition +Subject_ID, data= rotations_accuracy, whichRandom="Subject_ID");
+plot(bf_rot1);
+
+# interaction effects
+ bf_rot1[4]/bf_rot1[3] 
+```
+
+
+```
+

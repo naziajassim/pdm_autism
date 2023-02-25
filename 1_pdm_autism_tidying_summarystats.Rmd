@@ -1,0 +1,428 @@
+---
+title: "cbs_workflow"
+author: "Nazia Jassim"
+date: "04/10/2020"
+output: html_document
+---
+## Set wd
+```{r}
+getwd();
+library(tidyverse);
+library(BayesFactor);
+library(lsr);
+library(ggforce);
+library(ggdist);
+library(gghalves);
+
+```
+
+## Data cleaning and prep for analysis
+```{r}
+
+## Read in dataset 
+cbs <- read_csv("cbs_dataset_v1.csv") %>% as_tibble
+## Remove spaces and punctuations from colnames
+names(cbs) <- str_replace_all(names(cbs), c(" " = "." , "," = "" ));
+## Select variables of interest
+cbs <- select(cbs, Subject_ID, Digit.Span_Attempted: Rotations_Task.Duration, cohort.type, cohort.phase, AQ, Autism.diagnosis, Gender, Age, Highest.education, SPQ, Relatives.with.autism, synaesthesia)
+## prep groups- sex and diagnosis
+ cbs %>% 
+## Only Male and Female sexes selected (sorry non-binary participants:(!)
+   filter(Gender== "Male" | Gender== "Female") %>%
+   mutate(cohort = as_factor(cohort.type), sex = as_factor(Gender), AQ= as.numeric(AQ)) -> cbs_clean
+## create separate male and female groups for use later
+cbs_males <- filter(cbs_clean, sex =="Male")
+cbs_females <- filter( cbs_clean, sex== "Female")
+```
+
+
+## Create cutoffs based on working memory (WM) perfomance
+## Participants whose WM performance falls below cutoff removed from further analysis
+## Cutoffs computed based on overall group mean
+## !!!  CHANGE DATASET NAME IF REQUIRED!
+```{r}
+
+# digit span and monkey ladders
+ cbs_clean %>% 
+  #group_by(cohort) %>%  
+  mutate(cohort= ifelse(cohort=="asc", "Autism", "Control"), ds_cutoff= mean(Digit.Span_Single.Score.Raw) - 2*sd(Digit.Span_Single.Score.Raw),   ml_cutoff=mean(Monkey.Ladder_Single.Score.Raw) - 2*sd(Monkey.Ladder_Single.Score.Raw)) %>%
+filter(Digit.Span_Single.Score.Raw > ds_cutoff & Monkey.Ladder_Single.Score.Raw > ml_cutoff) %>% 
+select(-ds_cutoff & -ml_cutoff) %>% as_data_frame() -> cbs_wm 
+
+# t tests to check if groups differ in working mermory
+# Digit span
+t.test(Digit.Span_Single.Score.Raw ~ cohort, cbs_wm);
+ttestBF(formula=Digit.Span_Single.Score.Raw ~cohort, data=cbs_wm);
+cohensD(Digit.Span_Single.Score.Raw ~cohort, cbs_wm);
+
+# summary digit span
+cbs_wm%>% 
+  group_by(cohort)%>%
+  summarise(mean= mean(Digit.Span_Single.Score.Raw), sd= sd(Digit.Span_Single.Score.Raw))
+                                        
+
+## Digit span plots
+cbs_wm %>% ggplot(mapping= aes(x=cohort, y= Digit.Span_Single.Score.Raw,fill= cohort)) + xlab("Group")+ ylab("Digit Span Score")+ labs(fill= "Group", title = "S1: Working Memory- Digit Span Scores")+
+    ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .2, outlier.shape = NA) + 
+    geom_jitter(width = .08, size= 1, alpha= 0.3)
+
+
+                                        
+# Monkey ladders
+t.test(Monkey.Ladder_Single.Score.Raw~cohort, cbs_wm);
+ttestBF(formula=Monkey.Ladder_Single.Score.Raw~cohort, data=cbs_wm);
+cohensD(Monkey.Ladder_Single.Score.Raw~cohort, cbs_wm);
+
+# summary 
+cbs_wm%>% 
+  group_by(cohort)%>%
+  summarise(mean= mean(Monkey.Ladder_Single.Score.Raw), sd= sd(Monkey.Ladder_Single.Score.Raw))
+
+# Boxplot with raincloud
+cbs_wm %>% ggplot(mapping= aes(x=cohort, y= Monkey.Ladder_Single.Score.Raw,fill= cohort)) + xlab("Group")+ ylab("Monkey Ladder Score")+ labs(fill= "Group", title = "S2: Working Memory- Monkey Ladder Scores")+
+    ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .2, outlier.shape = NA) + 
+    geom_jitter(width = .08, size= 1, alpha= 0.3)
+```
+
+## Summary stats for final dataset to be used for further analysis
+```{r}
+
+length(cbs_wm$cohort =="asc");
+sum(cbs_wm$cohort =="asc" &cbs_wm$sex== "Female");
+sum(cbs_wm$cohort =="asc" &cbs_wm$sex== "Male");
+length(cbs_wm$cohort =="ctr");
+sum(cbs_wm$cohort =="ctr" &cbs_wm$sex== "Male");
+sum(cbs_wm$cohort =="ctr" &cbs_wm$sex== "Female");
+
+# age
+cbs_wm%>% 
+group_by(cohort)%>%
+summarise(mean= mean(Age, na.rm=TRUE), 
+            median= median(Age, na.rm=TRUE), 
+            sd_age= sd(Age, na.rm=TRUE), 
+            iqr= IQR(Age, na.rm=TRUE),
+            max= max(Age),
+            min= min(Age))
+
+```
+
+## Task 1- Feature Match
+```{r}
+##### I CBS Scores ---------------------------------------------------
+## Remove outliers, computed separately for each diagnosis group
+data_clean_FM <- cbs_wm %>%  
+  group_by(cohort) %>%  
+  mutate(cutoff= mean(Feature.Match_Score) - 2*sd(Feature.Match_Score)) %>%   filter(Feature.Match_Score > cutoff) %>% 
+select(-cutoff) 
+
+## Summary stats 
+data_clean_FM %>%
+  group_by(cohort) %>%
+  summarise(mean= mean(Feature.Match_Score, na.rm=TRUE), 
+            median= median(Feature.Match_Score, na.rm=TRUE), 
+            sd= sd(Feature.Match_Score, na.rm=TRUE), 
+            iqr= IQR(Feature.Match_Score, na.rm=TRUE),
+            max= max(Feature.Match_Score),
+            min= min(Feature.Match_Score));
+## Plots 
+ggplot(data_clean_FM, mapping= aes(x=cohort, y= Feature.Match_Score, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9) + facet_wrap(~sex, ncol=2);
+
+ggplot(data_clean_FM, mapping= aes(x=AQ,na.rm=TRUE, y= Feature.Match_Score, color= cohort))+ geom_point();
+
+## Distribution
+ ggplot(data = data_clean_FM) +
+ geom_density(mapping = aes(x = Feature.Match_Score, fill = cohort, colour= cohort), alpha= 0.2) + facet_wrap(~sex, ncol=2)
+ 
+```
+
+```{r}
+#----------------------------------------------------------------------------#
+ 
+#------------------------------- II ACCURACY RATES  --------------------------
+ 
+ # Overall accuracy- 
+
+## Compute accuracy scores and summary stats
+#   fm_accuracy <- cbs_wm %>%
+#   mutate(fm_accuracy_score = (Feature.Match_Attempted-Feature.Match_Errors)) 
+#   
+#   fm_accuracy %>%
+#   group_by(cohort) %>%
+#   summarise(mean = mean(fm_accuracy_score),
+#             median= median(fm_accuracy_score),
+#             sd = sd(fm_accuracy_score),
+#             max= max(fm_accuracy_score),
+#             min= min(fm_accuracy_score))
+#   
+# ## Remove outliers for accuracy scores (ie less than 2SD of group mean)
+#   fm_accuracy_clean <- fm_accuracy %>%
+#   group_by(cohort) %>%  
+#   mutate(cutoff= mean(fm_accuracy_score)- 2*sd(fm_accuracy_score)) %>% 
+#         filter( fm_accuracy_score > cutoff) %>% 
+#         select(-cutoff)
+  
+  # ------------------------------------------------ # --------------------------------------------------------------------------------#
+  
+## Compute Accuracy Rates 
+cbs_wm %>% as_tibble() %>% select("Subject_ID", "AQ", "Age", "sex", "Gender","cohort.type", c(12:26),"Subject_ID") %>%
+   mutate(cohort = as.factor(cohort.type),
+     fm_accuracy_score = (Feature.Match_Attempted-Feature.Match_Errors),
+          fm_accuracy_overall = (fm_accuracy_score/Feature.Match_Attempted*100), # overall accuracy
+          fm_match_errors = (Feature.Match_Match.Attempted - Feature.Match_Match.Correct),
+          fm_accuracy_match = ((Feature.Match_Match.Attempted - fm_match_errors)/(Feature.Match_Match.Attempted)*100),  # match
+          fm_mismatch_errors = (Feature.Match_Mismatch.Attempted - Feature.Match_Mismatch.Correct),
+          fm_accuracy_mismatch = (Feature.Match_Mismatch.Attempted - fm_mismatch_errors)/(Feature.Match_Mismatch.Attempted)*100) ->  fm_accuracy;
+
+
+# summary stats
+fm_accuracy %>%
+   group_by(cohort) %>%
+  summarise(mean = mean(fm_accuracy_overall),
+            median= median(fm_accuracy_overall),
+            sd = sd(fm_accuracy_overall),
+             max= max(fm_accuracy_overall),
+             min= min(fm_accuracy_overall))
+
+
+# remove outliers by overall accuracy 
+fm_accuracy %>%
+group_by(cohort) %>%  
+mutate(cutoff= mean(fm_accuracy_overall)- 2*sd(fm_accuracy_overall)) %>% 
+filter(fm_accuracy_overall> cutoff) %>%  
+  select(-cutoff) ->fm_accuracy_clean
+
+fm_accuracy_clean %>%
+   group_by(cohort) %>%
+  summarise(mean = mean(fm_accuracy_overall),
+            median= median(fm_accuracy_overall),
+            sd = sd(fm_accuracy_overall),
+             max= max(fm_accuracy_overall),
+             min= min(fm_accuracy_overall))
+
+# arrange acc by condition 
+fm_accuracy %>%
+  pivot_longer(cols=c('fm_accuracy_match','fm_accuracy_mismatch'), names_to= "condition", values_to= "accuracy_rate_per_condition") %>% 
+  mutate(condition=as.factor(condition)) -> fm_accuracy_by_condition;
+
+fm_accuracy_by_condition$condition = ifelse(fm_accuracy_by_condition$condition=="fm_accuracy_match", "match", "mismatch");
+
+## PLOT
+ # overall
+ggplot(fm_accuracy_by_condition, mapping= aes(x=cohort, y= fm_accuracy_overall, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9) + facet_wrap(~condition)
+
+## Write to csv 
+write.csv(fm_accuracy_by_condition, "fm_accuracy.csv")
+```
+
+## Task 2- Polygons
+```{r}
+
+## Remove outliers
+data_clean_poly <- cbs_wm %>%  
+  group_by(cohort) %>%  
+  mutate(cutoff= mean(Polygons_Score) - 2*sd(Polygons_Score)) %>%   filter(Polygons_Score > cutoff) %>% 
+select(-cutoff) 
+
+## Summarize scores
+data_clean_poly %>%
+  group_by(cohort) %>%
+  summarise(mean= mean(Polygons_Score, na.rm=TRUE), 
+            median= median(Polygons_Score, na.rm=TRUE), 
+            sd= sd(Polygons_Score, na.rm=TRUE), 
+            iqr= IQR(Polygons_Score, na.rm=TRUE),
+            max= max(Polygons_Score),
+            min= min(Polygons_Score))
+## Plots
+ggplot(data_clean_poly, mapping= aes(x=cohort, y= Polygons_Score, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9) + facet_wrap(~sex, ncol=2);
+
+ggplot(data_clean_poly, mapping= aes(x=AQ,na.rm=TRUE, y= Polygons_Score, color= cohort))+ geom_point()
+
+## Distribution
+ggplot(data = data_clean_poly) +
+geom_density(mapping = aes(x = Polygons_Score, fill = cohort, colour= cohort), alpha= 0.2) + facet_wrap(~sex, ncol=2)
+```
+
+```{r}
+#----------------------------------------------------------------------------#
+ 
+#------------------------------- II POLYGONS ACCURACY RATES  --------------------------
+ 
+ # Overall accuracy- 
+
+## Compute Accuracy Rates 
+cbs_wm %>% as_tibble() %>% select("Subject_ID", "AQ", "Age", "sex", "Gender","cohort.type", c(38:50),"Subject_ID") %>%
+   mutate(cohort = as.factor(cohort.type),
+     poly_accuracy_score = (Polygons_Attempted-Polygons_Errors),
+          poly_accuracy_overall = (poly_accuracy_score/Polygons_Attempted*100), # overall accuracy
+          poly_match_errors = (Polygons_Match.Attempted - Polygons_Match.Correct),
+          poly_accuracy_match = ((Polygons_Match.Attempted - poly_match_errors)/(Polygons_Match.Attempted)*100),  # match
+          poly_mismatch_errors = (Polygons_Mismatch.Attempted - Polygons_Mismatch.Correct),
+          poly_accuracy_mismatch = (Polygons_Mismatch.Attempted - poly_mismatch_errors)/(Polygons_Mismatch.Attempted)*100) ->  poly_accuracy;
+
+
+# summary stats
+poly_accuracy %>%
+   group_by(cohort) %>%
+  summarise(mean = mean(poly_accuracy_overall),
+            median= median(poly_accuracy_overall),
+            sd = sd(poly_accuracy_overall),
+             max= max(poly_accuracy_overall),
+             min= min(poly_accuracy_overall))
+
+
+# remove outliers by overall accuracy 
+# poly_accuracy %>%
+# group_by(cohort) %>%  
+# mutate(cutoff= mean(poly_accuracy_overall)- 2*sd(poly_accuracy_overall)) %>% 
+# filter(poly_accuracy_overall> cutoff) %>%  
+#   select(-cutoff) ->poly_accuracy_clean
+# 
+# poly_accuracy_clean %>%
+#    group_by(cohort) %>%
+#   summarise(mean = mean(poly_accuracy_overall),
+#             median= median(poly_accuracy_overall),
+#             sd = sd(poly_accuracy_overall),
+#              max= max(poly_accuracy_overall),
+#              min= min(poly_accuracy_overall))
+
+# arrange acc by condition 
+poly_accuracy %>%
+  pivot_longer(cols=c('poly_accuracy_match','poly_accuracy_mismatch'), names_to= "condition", values_to= "accuracy_rate_per_condition") %>% 
+  mutate(condition=as.factor(condition)) -> poly_accuracy_by_condition;
+
+poly_accuracy_by_condition$condition = ifelse(poly_accuracy_by_condition$condition=="poly_accuracy_match", "match", "mismatch");
+
+poly_accuracy_by_condition  %>% group_by(cohort, condition) %>%summarise(mean= mean(accuracy_rate_per_condition), sd= sd(accuracy_rate_per_condition), m)
+
+## PLOT
+ # overall
+ggplot(poly_accuracy_by_condition, mapping= aes(x=cohort, y= poly_accuracy_overall, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9) + facet_wrap(~condition)
+
+## Write to csv 
+write.csv(poly_accuracy_by_condition, "poly_accuracy.csv")
+
+```
+
+## Task 3- Rotations
+```{r}
+## Remove outliers
+data_clean_rot <- cbs_wm %>%  
+  group_by(cohort) %>%  
+  mutate(cutoff= mean(Rotations_Score) - 2*sd(Rotations_Score)) %>%   filter(Rotations_Score > cutoff) %>% 
+select(-cutoff);
+## Summarize 
+data_clean_rot %>%
+  group_by(cohort) %>%
+  summarise(mean= mean(Rotations_Score, na.rm=TRUE), 
+            median= median(Rotations_Score, na.rm=TRUE), 
+            sd= sd(Rotations_Score, na.rm=TRUE), 
+            iqr= IQR(Rotations_Score, na.rm=TRUE),
+            max= max(Rotations_Score),
+            min= min(Rotations_Score))
+
+## Plot
+ggplot(data_clean_rot, mapping= aes(x=cohort, y= Rotations_Score, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9)+ facet_wrap(~sex, ncol=2)
+
+ggplot(data_clean_rot, mapping= aes(x=AQ,na.rm=TRUE, y= Rotations_Score, color= cohort))+ geom_point();
+
+## Distributions
+ ggplot(data = data_clean_rot) +
+ geom_density(mapping = aes(x = Rotations_Score, fill = cohort, colour= cohort), alpha= 0.2) + facet_wrap(~sex, ncol=2)
+```
+
+```{r}
+# Overall accuracy- 
+
+## Compute accuracy scores and summary stats
+  rot_accuracy <- cbs_wm %>%
+  mutate(rot_accuracy_score = (Rotations_Attempted-Rotations_Errors)) 
+  
+  rot_accuracy %>%
+  group_by(cohort) %>%
+  summarise(mean = mean(rot_accuracy_score),
+            median= median(rot_accuracy_score),
+            sd = sd(rot_accuracy_score),
+            max= max(rot_accuracy_score),
+            min= min(rot_accuracy_score))
+  
+## Remove outliers for accuracy scores (ie less than 2SD of group mean)
+  rot_accuracy_clean <- rot_accuracy %>%
+  group_by(cohort) %>%  
+  mutate(cutoff= mean(rot_accuracy_score)- 2*sd(rot_accuracy_score)) %>% 
+        filter( rot_accuracy_score > cutoff) %>% 
+        select(-cutoff)
+  
+## Compute Accuracy Rates (after outlier removal for accuracy scores)
+ rot_accuracy_clean %>% 
+   mutate(rot_accuracy_rate = rot_accuracy_score/Rotations_Attempted*100) -> rot_accuracy_clean
+  
+ rot_accuracy_clean %>%
+    group_by(cohort) %>%
+    summarise(mean = mean(rot_accuracy_rate),
+            median= median(rot_accuracy_rate),
+            sd = sd(rot_accuracy_rate),
+            max= max(rot_accuracy_rate),
+            min= min(rot_accuracy_rate)) 
+  
+## PLOT
+ggplot(rot_accuracy_clean, mapping= aes(x=cohort, y= rot_accuracy_rate, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9)
+
+### Accurary rates for each condition (from outlier-removed data)
+
+## MATCH -------------------------------
+ 
+#Accuracy
+rot_match_accuracy <- rot_accuracy_clean %>% 
+mutate(rot_match_errors = Rotations_Match.Attempted - Rotations_Match.Correct)%>%
+mutate(rot_accuracy_match = (Rotations_Match.Attempted - rot_match_errors)
+   /(Rotations_Match.Attempted)*100)   
+ 
+#Summary stats
+rot_match_accuracy %>%
+group_by(cohort) %>%
+  summarise(mean = mean(rot_accuracy_match),
+            median= median(rot_accuracy_match),
+            sd = sd(rot_accuracy_match),
+            max= max(rot_accuracy_match),
+            min= min(rot_accuracy_match))
+
+## PLOT
+#Box
+ggplot(rot_match_accuracy, mapping= aes(x=cohort, y= rot_accuracy_match, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9);
+
+#Density
+ggplot(rot_match_accuracy)+
+geom_density(mapping = aes(x = rot_accuracy_match, fill = cohort, colour= cohort), alpha= 0.2) 
+  
+
+## MISMATCH ------------------------
+#Accuracy
+rot_mismatch_accuracy <- rot_accuracy_clean %>% 
+mutate(rot_mismatch_errors = Rotations_Mismatch.Attempted - Rotations_Mismatch.Correct)%>%
+mutate(rot_accuracy_mismatch = (Rotations_Mismatch.Attempted - rot_mismatch_errors)
+   /(Rotations_Mismatch.Attempted)*100)   
+ 
+#Summary stats
+rot_mismatch_accuracy %>%
+group_by(cohort) %>%
+  summarise(mean = mean(rot_accuracy_mismatch),
+            median= median(rot_accuracy_mismatch),
+            sd = sd(rot_accuracy_mismatch),
+            max= max(rot_accuracy_mismatch),
+            min= min(rot_accuracy_mismatch))
+
+## PLOT
+#Box
+ggplot(rot_mismatch_accuracy, mapping= aes(x=cohort, y= rot_accuracy_mismatch, fill=cohort))+ geom_boxplot()+ geom_jitter(color="black", size=0.4, alpha=0.9)
+#Density
+ggplot(rot_match_accuracy)+
+geom_density(mapping = aes(x = rot_accuracy_match, fill = cohort, colour= cohort), alpha= 0.2) 
+
+
+## Write to CSV
+write.csv(rot_match_accuracy, "rot_match_accuracy.csv")
+write.csv(rot_mismatch_accuracy, "rot_mismatch_accuracy.csv")
+```
+

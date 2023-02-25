@@ -1,0 +1,139 @@
+---
+title: "sdt"
+author: "Nazia Jassim"
+date: "04/07/2022"
+output: html_document
+---
+
+
+## Signal detection theory analyses
+```{r}
+library(tidyverse);
+library(psycho);
+library(BayesFactor)
+```
+
+
+```{r setup, include=FALSE}
+
+### SDT for Feature match task
+### MISMATCH condition = Signal, Match condition= Noise;
+
+data_clean_FM %>%
+  dplyr::select(Subject_ID, Feature.Match_Match.Attempted, Feature.Match_Match.Correct, Feature.Match_Match.Correct, Feature.Match_Mismatch.Correct, Feature.Match_Mismatch.Attempted, cohort) %>%
+  group_by(Subject_ID)%>%
+  mutate(Feature.Match_Match.Errors= Feature.Match_Match.Attempted- Feature.Match_Match.Correct, 
+         Feature.Match_Mismatch.Errors= Feature.Match_Mismatch.Attempted- Feature.Match_Mismatch.Correct) %>%
+  rename(n_hit = "Feature.Match_Mismatch.Correct",
+         n_false_alarm = "Feature.Match_Match.Errors",
+         n_miss	= "Feature.Match_Mismatch.Errors",
+         n_correct_rejection = "Feature.Match_Match.Correct") -> FM_SDT_data
+
+indices <- psycho::dprime(FM_SDT_data$n_hit, FM_SDT_data$n_false_alarm, FM_SDT_data$n_miss, FM_SDT_data$n_correct_rejection)
+
+cbind(FM_SDT_data, indices)%>% as.data.frame() %>%
+  mutate(dprime= unlist(dprime), c= unlist(c))-> FM_SDT_output;
+ 
+ 
+ ## Plot Sensitivity index
+
+ ggplot(FM_SDT_output, mapping= aes(x=cohort, y= dprime, fill=cohort)) +
+  xlab("Group")+ ylab("Sensitivity index (d')")+ 
+  labs(fill= "Group", title = "A")+
+    #ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .5, outlier.shape = NA) + 
+    geom_jitter(width = .09, size= 1, alpha= 0.3) + scale_fill_manual(values=c("#f1a340","#998ec3")) + theme_minimal() +theme(plot.title = element_text(size= 10),  plot.subtitle = element_text(size = 12, face = "bold", hjust = 0.5))
+
+ggsave("FM_SDT_dprime.png", width=3, height=3);
+
+ #Plot response criterion
+ ggplot(FM_SDT_output, mapping= aes(x=cohort, y= c, fill=cohort)) +
+  xlab("Group")+ ylab("Decision criterion (c)")+ 
+  labs(fill= "Group", title = "B")+
+    #ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .5, outlier.shape = NA) + 
+    geom_jitter(width = .09, size= 1, alpha= 0.3) + scale_fill_manual(values=c("#f1a340","#998ec3")) + theme_minimal() +theme(plot.title = element_text(size= 10),  plot.subtitle = element_text(size = 12, face = "bold", hjust = 0.5))
+
+ggsave("FM_SDT_c.png", width=3, height=3);
+
+# T test for sensitivity d prime
+t.test(dprime ~ cohort, FM_SDT_output);
+BayesFactor::ttestBF(formula= dprime~cohort, data = FM_SDT_output)
+cohensD(dprime ~ cohort, FM_SDT_output)
+ 
+
+# T test for decision criterion C
+t.test(c ~ cohort, FM_SDT_output);
+BayesFactor::ttestBF(formula= c~cohort, data = FM_SDT_output)
+cohensD(c~cohort, FM_SDT_output)
+
+
+### One sample t test for c
+FM_SDT_output %>%  group_by(cohort) %>% t_test(c ~ 1, mu = 0)
+
+ FM_SDT_output %>%  group_by(cohort) %>% cohens_d(c ~ 1, mu = 0)
+ 
+```
+
+## R Markdown
+
+```{r cars}
+
+### SDT for Polygons task
+### MISMATCH condition = Signal, Match condition= Noise;
+
+data_clean_poly %>% #outlier-cleaned poly data
+  group_by(Subject_ID)%>%
+  mutate(Polygons_Match.Errors= Polygons_Match.Attempted- Polygons_Match.Correct, 
+         Polygons_Mismatch.Errors= Polygons_Mismatch.Attempted- Polygons_Mismatch.Correct) %>%
+  rename(n_hit = "Polygons_Mismatch.Correct",
+         n_false_alarm = "Polygons_Match.Errors",
+         n_miss	= "Polygons_Mismatch.Errors",
+         n_correct_rejection = "Polygons_Match.Correct") -> poly_SDT_data;
+
+indices <- psycho::dprime(poly_SDT_data$n_hit, poly_SDT_data$n_false_alarm, poly_SDT_data$n_miss, poly_SDT_data$n_correct_rejection)
+
+ cbind(poly_SDT_data, indices) %>% mutate(dprime= as.numeric(dprime), c= as.numeric(c))-> poly_SDT_output;
+ 
+ 
+ ## Plot SEnsitivity index
+ ggplot(poly_SDT_output, mapping= aes(x=cohort, y= dprime, fill=cohort)) +
+  xlab("Group")+ ylab("Sensitivity index (d')")+ 
+  labs(fill= "Group", title = "A")+
+    #ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .5, outlier.shape = NA) + 
+    geom_jitter(width = .09, size= 1, alpha= 0.3) + scale_fill_manual(values=c("#f1a340","#998ec3")) + theme_minimal() +theme(plot.title = element_text(size= 10),  plot.subtitle = element_text(size = 12, face = "bold", hjust = 0.5))
+ 
+ ggsave("poly_SDT_dprime.png", width=3, height=3)
+ 
+ #Plot decision criterion
+ ggplot(poly_SDT_output, mapping= aes(x=cohort, y= c, fill=cohort)) +
+  xlab("Group")+ ylab("Decision criterion (c)")+ 
+  labs(fill= "Group", title = "B")+
+    #ggdist::stat_halfeye(adjust = .5, width = .7, .width = 0, justification = -.2, point_colour = NA) + 
+    geom_boxplot(width = .5, outlier.shape = NA) + 
+    geom_jitter(width = .09, size= 1, alpha= 0.3) + scale_fill_manual(values=c("#f1a340","#998ec3")) + theme_minimal() +theme(plot.title = element_text(size= 10),  plot.subtitle = element_text(size = 12, face = "bold", hjust = 0.5))
+
+ ggsave("poly_SDT_c.png", width=3, height=3)
+
+
+# T tests for dprime
+t.test(dprime ~ cohort, poly_SDT_output);
+BayesFactor::ttestBF(formula= dprime ~ cohort, data =poly_SDT_output) 
+cohensD(dprime~ cohort, data =poly_SDT_output) 
+
+
+# T test for decision criterion
+t.test(c ~ cohort, poly_SDT_output);
+BayesFactor::ttestBF(formula= c ~ cohort, data =poly_SDT_output) 
+cohensD(c~ cohort, data =poly_SDT_output) 
+
+
+##One sample t tests
+poly_SDT_output %>%  group_by(cohort) %>% t_test(c ~ 1, mu = 0)
+
+poly_SDT_output %>%  group_by(cohort) %>% cohens_d(c ~ 1, mu = 0)
+ 
+
+
+```
